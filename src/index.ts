@@ -43,9 +43,37 @@ let db: ReturnType<typeof client.db>;
 
 async function connectDatabase() {
   await client.connect();
+
   db = client.db("studiospace");
 
+  // ==========================================
+  // MongoDB Index Optimization
+  // ==========================================
+
+  // Studio indexes
+  await db.collection("studios").createIndex({ createdAt: -1 });
+  await db.collection("studios").createIndex({ ownerEmail: 1 });
+  await db.collection("studios").createIndex({ category: 1 });
+
+  // Booking indexes
+  await db.collection("bookings").createIndex({
+    customerEmail: 1,
+    createdAt: -1,
+  });
+
+  await db.collection("bookings").createIndex({
+    ownerEmail: 1,
+    createdAt: -1,
+  });
+
+  await db.collection("bookings").createIndex({
+    studioId: 1,
+    bookingDate: 1,
+    status: 1,
+  });
+
   console.log("MongoDB Connected Successfully!");
+  console.log("Database indexes created successfully!");
 }
 
 // ==========================================
@@ -154,10 +182,6 @@ app.post(
     }
   }
 );
-
-// ==========================================
-// Get All Studios (Public)
-// ==========================================
 
 // ==========================================
 // Get All Studios (Search, Filter & Pagination)
