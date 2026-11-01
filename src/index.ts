@@ -159,17 +159,67 @@ app.post(
 // Get All Studios (Public)
 // ==========================================
 
+// ==========================================
+// Get All Studios (Search, Filter & Pagination)
+// ==========================================
+
 app.get("/api/studios", async (req: Request, res: Response) => {
   try {
-    const studios = await db
-      .collection("studios")
-      .find()
-      .sort({ createdAt: -1 })
-      .toArray();
+    const {
+      category,
+      search,
+      page = "1",
+      limit = "12",
+    } = req.query;
+
+    const currentPage = Math.max(1, Number(page) || 1);
+    const pageLimit = Math.min(50, Math.max(1, Number(limit) || 12));
+    const skip = (currentPage - 1) * pageLimit;
+
+    const filter: Record<string, unknown> = {};
+
+    if (typeof category === "string" && category.trim()) {
+      filter.category = {
+        $regex: category.trim(),
+        $options: "i",
+      };
+    }
+
+    if (typeof search === "string" && search.trim()) {
+      const searchRegex = {
+        $regex: search.trim(),
+        $options: "i",
+      };
+
+      filter.$or = [
+        { title: searchRegex },
+        { location: searchRegex },
+        { category: searchRegex },
+      ];
+    }
+
+    const collection = db.collection("studios");
+
+    const [studios, total] = await Promise.all([
+      collection
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(pageLimit)
+        .toArray(),
+
+      collection.countDocuments(filter),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: studios.length,
+      total,
+      pagination: {
+        currentPage,
+        totalPages: Math.ceil(total / pageLimit),
+        limit: pageLimit,
+      },
       data: studios,
     });
   } catch (error) {
