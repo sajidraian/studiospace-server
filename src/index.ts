@@ -21,7 +21,6 @@ const PORT = process.env.PORT || 5000;
 // Rate Limiters
 // ==========================================
 
-// General API rate limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 100,
@@ -33,7 +32,6 @@ const apiLimiter = rateLimit({
   },
 });
 
-// Booking creation rate limiter
 const bookingLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -240,6 +238,14 @@ app.post(
 );
 
 // ==========================================
+// Escape Special Regex Characters
+// ==========================================
+
+const escapeRegex = (value: string) => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// ==========================================
 // Get All Studios (Search, Filter & Pagination)
 // ==========================================
 
@@ -258,16 +264,20 @@ app.get("/api/studios", async (req: Request, res: Response) => {
 
     const filter: Record<string, unknown> = {};
 
+    // Safe category filtering
     if (typeof category === "string" && category.trim()) {
       filter.category = {
-        $regex: category.trim(),
+        $regex: escapeRegex(category.trim()),
         $options: "i",
       };
     }
 
+    // Safe search with maximum 100 characters
     if (typeof search === "string" && search.trim()) {
+      const safeSearch = escapeRegex(search.trim().slice(0, 100));
+
       const searchRegex = {
-        $regex: search.trim(),
+        $regex: safeSearch,
         $options: "i",
       };
 
