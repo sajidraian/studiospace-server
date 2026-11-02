@@ -113,7 +113,31 @@ async function connectDatabase() {
 app.get("/", (req: Request, res: Response) => {
   res.send("StudioSpace Server is Running!");
 });
+// ==========================================
+// Health Check API
+// ==========================================
 
+app.get("/api/health", async (req: Request, res: Response) => {
+  try {
+    await db.command({ ping: 1 });
+
+    return res.status(200).json({
+      success: true,
+      message: "StudioSpace API is healthy!",
+      database: "connected",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Health Check Failed:", error);
+
+    return res.status(503).json({
+      success: false,
+      message: "StudioSpace API is unavailable.",
+      database: "disconnected",
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
 // ==========================================
 // Add New Studio (JWT Protected)
 // ==========================================
