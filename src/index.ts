@@ -14,6 +14,7 @@ dotenv.config();
 
 const app = express();
 app.use(helmet());
+
 const PORT = process.env.PORT || 5000;
 
 // ==========================================
@@ -58,7 +59,6 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
-// Apply general rate limiting to API routes
 app.use("/api", apiLimiter);
 
 // ==========================================
@@ -113,6 +113,7 @@ async function connectDatabase() {
 app.get("/", (req: Request, res: Response) => {
   res.send("StudioSpace Server is Running!");
 });
+
 // ==========================================
 // Health Check API
 // ==========================================
@@ -138,6 +139,7 @@ app.get("/api/health", async (req: Request, res: Response) => {
     });
   }
 });
+
 // ==========================================
 // Add New Studio (JWT Protected)
 // ==========================================
@@ -727,7 +729,7 @@ app.post(
 );
 
 // ==========================================
-// Get My Bookings (Customer) (JWT Protected)
+// Get My Bookings (Customer) (JWT Protected + Pagination)
 // ==========================================
 
 app.get(
@@ -735,17 +737,42 @@ app.get(
   verifyJWT,
   async (req: AuthRequest, res: Response) => {
     try {
-      const bookings = await db
-        .collection("bookings")
-        .find({
-          customerEmail: req.user!.email,
-        })
-        .sort({ createdAt: -1 })
-        .toArray();
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(
+        50,
+        Math.max(1, Number(req.query.limit) || 10)
+      );
+
+      const skip = (page - 1) * limit;
+
+      const filter = {
+        customerEmail: req.user!.email,
+      };
+
+      const collection = db.collection("bookings");
+
+      const [bookings, total] = await Promise.all([
+        collection
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray(),
+
+        collection.countDocuments(filter),
+      ]);
 
       return res.status(200).json({
         success: true,
         count: bookings.length,
+        total,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          limit,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        },
         data: bookings,
       });
     } catch (error) {
@@ -760,7 +787,7 @@ app.get(
 );
 
 // ==========================================
-// Get Owner Bookings (Studio Owner) (JWT Protected)
+// Get Owner Bookings (Studio Owner) (JWT Protected + Pagination)
 // ==========================================
 
 app.get(
@@ -768,17 +795,42 @@ app.get(
   verifyJWT,
   async (req: AuthRequest, res: Response) => {
     try {
-      const bookings = await db
-        .collection("bookings")
-        .find({
-          ownerEmail: req.user!.email,
-        })
-        .sort({ createdAt: -1 })
-        .toArray();
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(
+        50,
+        Math.max(1, Number(req.query.limit) || 10)
+      );
+
+      const skip = (page - 1) * limit;
+
+      const filter = {
+        ownerEmail: req.user!.email,
+      };
+
+      const collection = db.collection("bookings");
+
+      const [bookings, total] = await Promise.all([
+        collection
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray(),
+
+        collection.countDocuments(filter),
+      ]);
 
       return res.status(200).json({
         success: true,
         count: bookings.length,
+        total,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          limit,
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1,
+        },
         data: bookings,
       });
     } catch (error) {
