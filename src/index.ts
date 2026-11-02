@@ -5,6 +5,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { MongoClient } from "mongodb";
+import rateLimit from "express-rate-limit";
 import { verifyJWT, AuthRequest } from "./middleware.js";
 
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
@@ -12,6 +13,34 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ==========================================
+// Rate Limiters
+// ==========================================
+
+// General API rate limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests. Please try again later.",
+  },
+});
+
+// Booking creation rate limiter
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many booking requests. Please try again later.",
+  },
+});
 
 // ==========================================
 // Middleware
@@ -24,8 +53,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
+
+// Apply general rate limiting to API routes
+app.use("/api", apiLimiter);
 
 // ==========================================
 // MongoDB Connection
@@ -45,10 +77,6 @@ async function connectDatabase() {
   await client.connect();
 
   db = client.db("studiospace");
-
-  // ==========================================
-  // MongoDB Index Optimization
-  // ==========================================
 
   // Studio indexes
   await db.collection("studios").createIndex({ createdAt: -1 });
@@ -519,10 +547,11 @@ app.get("/api/featured-studios", async (req: Request, res: Response) => {
 // Booking System
 // ==========================================
 
-// Create New Booking (JWT Protected)
+// Create New Booking (JWT Protected + Rate Limited)
 
 app.post(
   "/api/bookings",
+  bookingLimiter,
   verifyJWT,
   async (req: AuthRequest, res: Response) => {
     try {
@@ -822,7 +851,6 @@ app.patch(
         });
       }
 
-      // Check for overlapping confirmed bookings
       const conflict = await db.collection("bookings").findOne({
         _id: { $ne: new ObjectId(id) },
         studioId: booking.studioId,
