@@ -1,4 +1,5 @@
 import dns from "node:dns";
+import helmet from "helmet";
 import { ObjectId } from "mongodb";
 import express, { Request, Response } from "express";
 import cors from "cors";
@@ -12,6 +13,7 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 dotenv.config();
 
 const app = express();
+app.use(helmet());
 const PORT = process.env.PORT || 5000;
 
 // ==========================================
