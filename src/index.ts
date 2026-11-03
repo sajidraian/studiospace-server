@@ -590,6 +590,107 @@ app.get("/api/featured-studios", async (req: Request, res: Response) => {
 });
 
 // ==========================================
+// Studio Reviews & Ratings
+// ==========================================
+
+// Get public reviews for a studio
+app.get("/api/studios/:id/reviews", async (req: Request, res: Response) => {
+  try {
+    const studioId = String(req.params.id);
+    if (!ObjectId.isValid(studioId)) {
+      return res.status(400).json({ success: false, message: "Invalid studio ID." });
+    }
+
+    const reviews = await db.collection("reviews")
+      .find({ studioId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+
+    return res.status(200).json({ success: true, count: reviews.length, data: reviews });
+  } catch (error) {
+    console.error("Fetch Studio Reviews Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch reviews." });
+  }
+});
+
+// Submit a review only for a past, confirmed booking owned by the guest
+app.post("/api/reviews", verifyJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const { bookingId, rating, comment } = req.body;
+    if (!bookingId || !ObjectId.isValid(String(bookingId))) {
+      return res.status(400).json({ success: false, message: "A valid booking ID is required." });
+    }
+
+    const score = Number(rating);
+    const reviewText = typeof comment === "string" ? comment.trim() : "";
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      return res.status(400).json({ success: false, message: "Rating must be between 1 and 5." });
+    }
+    if (reviewText.length > 1000) {
+      return res.status(400).json({ success: false, message: "Review must be 1000 characters or fewer." });
+    }
+
+    const booking = await db.collection("bookings").findOne({
+      _id: new ObjectId(String(bookingId)),
+      customerEmail: req.user!.email,
+      status: "Confirmed",
+    });
+    if (!booking) {
+      return res.status(403).json({ success: false, message: "Only guests with a confirmed booking can review this studio." });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (typeof booking.bookingDate !== "string" || booking.bookingDate >= today) {
+      return res.status(403).json({ success: false, message: "You can review this studio after your booking date has passed." });
+    }
+
+    const studioId = String(booking.studioId);
+    const studio = await db.collection("studios").findOne({ _id: new ObjectId(studioId) });
+    if (!studio) {
+      return res.status(404).json({ success: false, message: "Studio not found." });
+    }
+
+    const review = {
+      studioId,
+      bookingId: String(booking._id),
+      reviewerEmail: req.user!.email,
+      reviewerName: req.user!.name || "Guest",
+      rating: score,
+      comment: reviewText,
+      createdAt: new Date(),
+    };
+
+    await db.collection("reviews").insertOne(review);
+
+    const stats = await db.collection("reviews").aggregate([
+      { $match: { studioId } },
+      { $group: { _id: "$studioId", averageRating: { $avg: "$rating" }, reviewCount: { $sum: 1 } } },
+    ]).next();
+
+    const averageRating = stats ? Number(stats.averageRating.toFixed(1)) : score;
+    const reviewCount = stats?.reviewCount || 1;
+
+    await db.collection("studios").updateOne(
+      { _id: new ObjectId(studioId) },
+      { $set: { rating: averageRating, reviewCount } }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Thank you for sharing your review!",
+      data: { ...review, rating: averageRating, reviewCount },
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === 11000) {
+      return res.status(409).json({ success: false, message: "You have already reviewed this booking." });
+    }
+    console.error("Submit Studio Review Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to submit review." });
+  }
+});
+
+// ==========================================
 // Booking System
 // ==========================================
 
