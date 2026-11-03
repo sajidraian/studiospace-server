@@ -102,7 +102,7 @@ async function connectDatabase() {
 
   // Booking confirmation lock index
   await db.collection("bookingLocks").createIndex(
-    { _id: 1 },
+    { lockKey: 1 },
     { unique: true }
   );
 
@@ -920,6 +920,8 @@ app.patch(
   "/api/bookings/:id/confirm",
   verifyJWT,
   async (req: AuthRequest, res: Response) => {
+    let bookingConflict = false;
+    let bookingStatusChanged = false;
     const session = client.startSession();
 
     try {
@@ -951,7 +953,7 @@ app.patch(
 
       try {
         await db.collection("bookingLocks").updateOne(
-          { _id: lockId },
+          { lockKey: lockId },
           {
             $setOnInsert: {
               version: 0,
@@ -972,9 +974,6 @@ app.patch(
         }
       }
 
-      let bookingConflict = false;
-      let bookingStatusChanged = false;
-
       await session.withTransaction(async () => {
         bookingConflict = false;
         bookingStatusChanged = false;
@@ -982,7 +981,7 @@ app.patch(
         // Write to the same lock document to serialize confirmations
         // for this studio and booking date.
         await db.collection("bookingLocks").updateOne(
-          { _id: lockId },
+          { lockKey: lockId },
           {
             $inc: { version: 1 },
             $set: { updatedAt: new Date() },
