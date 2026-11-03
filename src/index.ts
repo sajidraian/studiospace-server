@@ -100,6 +100,10 @@ async function connectDatabase() {
     status: 1,
   });
 
+  // Review indexes: one review per completed booking
+  await db.collection("reviews").createIndex({ bookingId: 1 }, { unique: true });
+  await db.collection("reviews").createIndex({ studioId: 1, createdAt: -1 });
+
   // Booking confirmation lock index
   await db.collection("bookingLocks").createIndex(
     { lockKey: 1 },
