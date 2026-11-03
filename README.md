@@ -1,172 +1,209 @@
-StudioSpace Backend API
+# StudioSpace Backend API
 
-StudioSpace is a peer-to-peer creative workspace and production studio sharing platform. This repository contains the backend API used by the StudioSpace frontend to manage studio listings, user bookings, and related data.
+The backend service for **StudioSpace**, a peer-to-peer creative workspace and production studio sharing platform. It provides REST APIs for studio discovery and management, customer bookings, owner booking management, authentication verification, and studio reviews.
 
-🌐 Deployment
+## 🌐 Live Deployment
 
-Backend API: https://studiospace-server-l4bg.onrender.com
+| Resource | URL |
+|---|---|
+| Backend API | https://studiospace-server-l4bg.onrender.com |
+| API Health Check | https://studiospace-server-l4bg.onrender.com/api/health |
+| Frontend Website | https://studiospace-client-one.vercel.app/ |
+| Frontend Repository | https://github.com/sajidraian/studiospace-client |
 
-Frontend Website: https://studiospace-client-one.vercel.app/
+## ✨ Features
 
-Frontend Repository: https://github.com/sajidraian/studiospace-client
+- RESTful API built with Express 5 and TypeScript.
+- MongoDB Atlas integration using the official MongoDB Node.js driver.
+- JWT verification using Better Auth's remote JWKS endpoint.
+- HTTPOnly cookie-based authentication through the `studio_auth_token` cookie.
+- Public studio discovery, featured studios, search, category filtering, and pagination.
+- Authenticated studio creation, update, listing ownership, and deletion.
+- Customer booking requests and paginated booking history.
+- Studio-owner booking management and confirmation.
+- Booking cancellation for customers.
+- Prevention of overlapping confirmed bookings, including transaction-based locking during confirmation.
+- Studio reviews and ratings, limited to eligible completed bookings.
+- Request validation and consistent JSON responses.
+- Security headers with Helmet, credentialed CORS, and API/booking rate limits.
+- MongoDB indexes for common queries and booking/review consistency.
 
-✨ Backend Features
+## 🛠️ Tech Stack
 
-RESTful API built with Express.js and TypeScript.
+- Node.js
+- Express.js 5
+- TypeScript
+- MongoDB Atlas
+- MongoDB Node.js Driver
+- Better Auth JWT / JOSE
+- Cookie Parser
+- Helmet
+- CORS
+- Express Rate Limit
+- dotenv
 
-MongoDB Atlas database integration.
+## 📁 Project Structure
 
-JWT-based authentication using Better Auth tokens.
+```text
+studiospace-server/
+├── src/
+│   ├── index.ts          # Express app, database connection and API routes
+│   └── middleware.ts     # Better Auth JWT verification middleware
+├── .env                  # Local environment variables (not committed)
+├── package.json
+├── package-lock.json
+└── tsconfig.json
+```
 
-HTTPOnly cookie-based authentication support through the frontend.
+## 🚀 Installation and Setup
 
-Protected studio management operations.
+### Prerequisites
 
-Studio listing retrieval and management.
+- Node.js 20 or later
+- npm
+- A MongoDB Atlas cluster (or compatible MongoDB deployment)
+- The StudioSpace frontend configured with Better Auth
 
-Booking creation and booking history retrieval.
+### 1. Clone the repository
 
-Booking cancellation for customers.
-
-Booking confirmation for studio owners.
-
-Prevention of overlapping confirmed bookings.
-
-Input validation and structured JSON responses.
-
-CORS configuration for frontend-backend communication.
-
-🛠️ Technology Stack
-
-Node.js
-
-Express.js
-
-TypeScript
-
-MongoDB Atlas
-
-MongoDB Node.js Driver
-
-JWT
-
-Better Auth
-
-dotenv
-
-📦 Installation and Setup
-
-Prerequisites
-
-Node.js 20 or later
-
-npm
-
-MongoDB Atlas account
-
-1. Clone the Repository
-
+```bash
 git clone https://github.com/sajidraian/studiospace-server.git
-
-2. Navigate to the Server Directory
-
 cd studiospace-server
+```
 
-3. Install Dependencies
+### 2. Install dependencies
 
+```bash
 npm install
+```
 
-4. Configure Environment Variables
+### 3. Configure environment variables
 
-Create a .env file in the server project root. Add the variables required by your server configuration:
+Create a `.env` file in the project root:
 
+```env
 PORT=5000
 NODE_ENV=development
-
 MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
-
 CLIENT_URL=http://localhost:3000
 BETTER_AUTH_URL=http://localhost:3000
+```
 
-Replace the placeholder values with your actual local configuration. Keep .env out of version control and never publish secrets.
+Replace the example values with your own configuration.
 
-5. Run the Development Server
+| Variable | Description |
+|---|---|
+| `PORT` | Port used by the API. Defaults to `5000`. |
+| `NODE_ENV` | Set to `development` locally and `production` when deployed. |
+| `MONGODB_URI` | MongoDB connection string. Required. |
+| `CLIENT_URL` | Allowed frontend origin for credentialed CORS requests. |
+| `BETTER_AUTH_URL` | Base URL of the Better Auth frontend. Used to retrieve JWKS and verify token issuer/audience. |
 
-Use the development script configured in package.json. For example:
+For local development, the frontend and `BETTER_AUTH_URL` should use the same local origin. In production, set `CLIENT_URL` and `BETTER_AUTH_URL` to the deployed frontend origin. Keep all credentials and environment files private; never commit them to Git.
 
+### 4. Run the development server
+
+```bash
 npm run dev
+```
 
-If your project uses a different script name, use the matching script from package.json.
+The API will run at `http://localhost:5000` unless another port is configured.
 
-🔌 API Overview
+### 5. Build and run for production
 
-The API provides endpoints for studio listings and bookings. The following booking endpoints are implemented:
+```bash
+npm run build
+npm start
+```
 
-Method
+## 🔐 Authentication
 
-Endpoint
+Protected endpoints use the `verifyJWT` middleware.
 
-Description
+1. The frontend authenticates users with Better Auth.
+2. The frontend obtains a Better Auth JWT and stores it in the HTTPOnly `studio_auth_token` cookie.
+3. The backend reads that cookie and verifies the JWT against the Better Auth JWKS endpoint at `<BETTER_AUTH_URL>/api/auth/jwks`.
+4. The token's issuer and audience are checked against `BETTER_AUTH_URL`.
+5. The authenticated user's ID, email, and name are attached to the request.
 
-Authentication
+Requests to protected endpoints must include the authentication cookie. Do not expose tokens or secrets in client-side code, logs, screenshots, or source control.
 
-POST
+## 🔌 API Reference
 
-/api/bookings
+Base URL (local): `http://localhost:5000`
 
-Submit a booking request
+Base URL (production): `https://studiospace-server-l4bg.onrender.com`
 
-Required
+### General and studio endpoints
 
-GET
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| GET | `/` | Basic server status | Public |
+| GET | `/api/health` | API and MongoDB health check | Public |
+| GET | `/api/studios` | List studios; supports `search`, `category`, `page`, and `limit` query parameters | Public |
+| GET | `/api/featured-studios` | Get the latest featured studios | Public |
+| GET | `/api/studios/:id` | Get studio details | Public |
+| GET | `/api/studios/:id/reviews` | Get public reviews for a studio | Public |
+| POST | `/api/studios` | Create a studio listing | Authenticated |
+| GET | `/api/my-studios` | Get the signed-in owner's studio listings | Authenticated |
+| PUT | `/api/studios/:id` | Update an owned studio listing | Authenticated owner |
+| DELETE | `/api/studios/:id` | Delete an owned studio listing | Authenticated owner |
 
-/api/my-bookings
+### Booking endpoints
 
-Get the current customer's bookings
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| POST | `/api/bookings` | Submit a booking request | Authenticated customer |
+| GET | `/api/my-bookings` | Get the current customer's bookings; supports `page` and `limit` | Authenticated customer |
+| GET | `/api/owner-bookings` | Get bookings for the current studio owner; supports `page` and `limit` | Authenticated owner |
+| PATCH | `/api/bookings/:id/cancel` | Cancel a pending booking | Booking customer |
+| PATCH | `/api/bookings/:id/confirm` | Confirm a pending booking | Studio owner |
 
-Required
+### Review endpoint
 
-PATCH
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| POST | `/api/reviews` | Submit a 1–5 star review for an eligible past confirmed booking | Authenticated booking customer |
 
-/api/bookings/:id/cancel
+### Health check example
 
-Cancel a pending booking
+```http
+GET /api/health
+```
 
-Required
+A successful response returns HTTP `200` with `success: true` and `database: "connected"`. If the database ping fails, the endpoint returns HTTP `503`.
 
-PATCH
+## 🛡️ Booking Conflict Prevention
 
-/api/bookings/:id/confirm
+Booking requests are checked against existing confirmed bookings for the same studio and date. When an owner confirms a pending booking, the backend performs the overlap check inside a MongoDB transaction and uses a unique booking-lock record to serialize confirmations for that studio and date. Conflicting confirmation attempts receive HTTP `409`.
 
-Confirm a pending booking as the studio owner
+**Deployment note:** Transaction-based booking confirmation requires a MongoDB deployment that supports transactions, such as a replica set or MongoDB Atlas cluster.
 
-Required
+## ⚙️ Security and Reliability
 
-The API also includes studio-related endpoints used by the frontend for exploring and managing studio listings.
+- Helmet adds standard HTTP security headers.
+- CORS allows the configured frontend origin and credentials.
+- API requests are rate-limited to 100 requests per 15 minutes.
+- Booking creation is additionally limited to 10 requests per 15 minutes.
+- Protected operations verify the signed Better Auth JWT.
+- Studio update/delete operations are restricted to the listing owner.
+- Booking and review operations validate IDs, dates, times, ratings, and ownership.
+- Environment files and credentials must remain private.
 
-❤️ Health Check
+## 📜 Available Scripts
 
-The deployed API provides a health-check endpoint:
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start the development server with file watching |
+| `npm run build` | Compile TypeScript into the `dist/` directory |
+| `npm start` | Run the compiled production server |
 
-GET /
+## 🔗 Related Project
 
-A successful response indicates that the API is running and the database connection is available.
+- **Frontend:** [StudioSpace Client](https://github.com/sajidraian/studiospace-client)
+- **Live Website:** [studiospace-client-one.vercel.app](https://studiospace-client-one.vercel.app/)
+- **Live Backend:** [studiospace-server-l4bg.onrender.com](https://studiospace-server-l4bg.onrender.com)
 
-🔐 Security Notes
+---
 
-Protected endpoints require a valid authenticated session/token.
-
-Do not commit .env files or publish database credentials, JWT secrets, or OAuth secrets.
-
-Configure CLIENT_URL and BETTER_AUTH_URL to match the frontend environment when deploying.
-
-Use HTTPS for production deployments.
-
-📁 Related Repository
-
-Frontend: https://github.com/sajidraian/studiospace-client
-
-Live Website: https://studiospace-client-one.vercel.app/
-
-Project: StudioSpace — Peer-to-Peer Creative Workspace & Production Studio Sharing Platform
+**StudioSpace** — Peer-to-Peer Creative Workspace & Production Studio Sharing Platform.
