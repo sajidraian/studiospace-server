@@ -602,7 +602,7 @@ app.get("/api/studios/:id/reviews", async (req: Request, res: Response) => {
     }
 
     const reviews = await db.collection("reviews")
-      .find({ studioId })
+      .find({ studioId }, { projection: { reviewerEmail: 0, bookingId: 0 } })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray();
@@ -679,7 +679,13 @@ app.post("/api/reviews", verifyJWT, async (req: AuthRequest, res: Response) => {
     return res.status(201).json({
       success: true,
       message: "Thank you for sharing your review!",
-      data: { ...review, rating: averageRating, reviewCount },
+      data: {
+        reviewerName: review.reviewerName,
+        rating: averageRating,
+        reviewCount,
+        comment: review.comment,
+        createdAt: review.createdAt,
+      },
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === 11000) {
