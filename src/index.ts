@@ -100,6 +100,12 @@ async function connectDatabase() {
     status: 1,
   });
 
+  // Booking confirmation lock index
+  await db.collection("bookingLocks").createIndex(
+    { _id: 1 },
+    { unique: true }
+  );
+
   console.log("MongoDB Connected Successfully!");
   console.log("Database indexes created successfully!");
 }
@@ -264,7 +270,6 @@ app.get("/api/studios", async (req: Request, res: Response) => {
 
     const filter: Record<string, unknown> = {};
 
-    // Safe category filtering
     if (typeof category === "string" && category.trim()) {
       filter.category = {
         $regex: escapeRegex(category.trim()),
@@ -272,7 +277,6 @@ app.get("/api/studios", async (req: Request, res: Response) => {
       };
     }
 
-    // Safe search with maximum 100 characters
     if (typeof search === "string" && search.trim()) {
       const safeSearch = escapeRegex(search.trim().slice(0, 100));
 
@@ -916,6 +920,8 @@ app.patch(
   "/api/bookings/:id/confirm",
   verifyJWT,
   async (req: AuthRequest, res: Response) => {
+    const session = client.startSession();
+
     try {
       const id = String(req.params.id);
 
@@ -926,6 +932,7 @@ app.patch(
         });
       }
 
+      // Find the pending booking first.
       const booking = await db.collection("bookings").findOne({
         _id: new ObjectId(id),
         ownerEmail: req.user!.email,
@@ -939,54 +946,119 @@ app.patch(
         });
       }
 
-      const conflict = await db.collection("bookings").findOne({
-        _id: { $ne: new ObjectId(id) },
-        studioId: booking.studioId,
-        bookingDate: booking.bookingDate,
-        status: "Confirmed",
-        startTime: { $lt: booking.endTime },
-        endTime: { $gt: booking.startTime },
-      });
+      // Ensure the lock document exists before starting the transaction.
+      const lockId = `${booking.studioId}:${booking.bookingDate}`;
 
-      if (conflict) {
-        return res.status(409).json({
-          success: false,
-          message: "Another confirmed booking already occupies this time.",
-        });
-      }
-
-      const result = await db.collection("bookings").updateOne(
-        {
-          _id: new ObjectId(id),
-          ownerEmail: req.user!.email,
-          status: "Pending",
-        },
-        {
-          $set: {
-            status: "Confirmed",
-            confirmedAt: new Date(),
+      try {
+        await db.collection("bookingLocks").updateOne(
+          { _id: lockId },
+          {
+            $setOnInsert: {
+              version: 0,
+              createdAt: new Date(),
+            },
           },
+          { upsert: true }
+        );
+      } catch (error) {
+        // Concurrent upsert may create the same unique lock document.
+        if (
+          !error ||
+          typeof error !== "object" ||
+          !("code" in error) ||
+          error.code !== 11000
+        ) {
+          throw error;
         }
-      );
-
-      if (result.modifiedCount === 0) {
-        return res.status(409).json({
-          success: false,
-          message: "Booking status changed. Please refresh and try again.",
-        });
       }
+
+      let bookingConflict = false;
+      let bookingStatusChanged = false;
+
+      await session.withTransaction(async () => {
+        bookingConflict = false;
+        bookingStatusChanged = false;
+
+        // Write to the same lock document to serialize confirmations
+        // for this studio and booking date.
+        await db.collection("bookingLocks").updateOne(
+          { _id: lockId },
+          {
+            $inc: { version: 1 },
+            $set: { updatedAt: new Date() },
+          },
+          { session }
+        );
+
+        // Check overlapping confirmed bookings inside the transaction.
+        const conflict = await db.collection("bookings").findOne(
+          {
+            _id: { $ne: new ObjectId(id) },
+            studioId: booking.studioId,
+            bookingDate: booking.bookingDate,
+            status: "Confirmed",
+            startTime: { $lt: booking.endTime },
+            endTime: { $gt: booking.startTime },
+          },
+          { session }
+        );
+
+        if (conflict) {
+          bookingConflict = true;
+          throw new Error("BOOKING_CONFLICT");
+        }
+
+        const result = await db.collection("bookings").updateOne(
+          {
+            _id: new ObjectId(id),
+            ownerEmail: req.user!.email,
+            status: "Pending",
+          },
+          {
+            $set: {
+              status: "Confirmed",
+              confirmedAt: new Date(),
+            },
+          },
+          { session }
+        );
+
+        if (result.modifiedCount === 0) {
+          bookingStatusChanged = true;
+          throw new Error("BOOKING_STATUS_CHANGED");
+        }
+      });
 
       return res.status(200).json({
         success: true,
         message: "Booking confirmed successfully.",
       });
     } catch (error) {
-      console.error("Confirm Booking Error:", error);
+      if (bookingConflict) {
+        return res.status(409).json({
+          success: false,
+          message: "Another confirmed booking already occupies this time.",
+        });
+      }
+
+      if (bookingStatusChanged) {
+        return res.status(409).json({
+          success: false,
+          message: "Booking status changed. Please refresh and try again.",
+        });
+      }
+
+      console.error(
+        "Confirm Booking Error:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
 
       return res.status(500).json({
         success: false,
         message: "Failed to confirm booking.",
       });
+    } finally {
+      await session.endSession();
     }
   }
 );
@@ -1000,7 +1072,7 @@ async function startServer() {
     await connectDatabase();
 
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {
     console.error("Server startup failed:", error);
