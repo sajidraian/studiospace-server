@@ -634,7 +634,7 @@ app.post("/api/reviews", verifyJWT, async (req: AuthRequest, res: Response) => {
     const booking = await db.collection("bookings").findOne({
       _id: new ObjectId(String(bookingId)),
       customerEmail: req.user!.email,
-      status: "Confirmed",
+      status: { $in: ["Confirmed", "Completed"] },
     });
     if (!booking) {
       return res.status(403).json({ success: false, message: "Only guests with a confirmed booking can review this studio." });
@@ -876,6 +876,13 @@ app.get(
 
       const collection = db.collection("bookings");
 
+      // Automatically close confirmed bookings after their booking date has passed.
+      const today = new Date().toISOString().slice(0, 10);
+      await collection.updateMany(
+        { ...filter, status: "Confirmed", bookingDate: { $lt: today } },
+        { $set: { status: "Completed", completedAt: new Date() } }
+      );
+
       const [bookings, total] = await Promise.all([
         collection
           .find(filter)
@@ -933,6 +940,13 @@ app.get(
       };
 
       const collection = db.collection("bookings");
+
+      // Keep owner and customer dashboards consistent about completed bookings.
+      const today = new Date().toISOString().slice(0, 10);
+      await collection.updateMany(
+        { ...filter, status: "Confirmed", bookingDate: { $lt: today } },
+        { $set: { status: "Completed", completedAt: new Date() } }
+      );
 
       const [bookings, total] = await Promise.all([
         collection
