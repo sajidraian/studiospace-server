@@ -100,6 +100,9 @@ async function connectDatabase() {
     status: 1,
   });
 
+  // Newsletter subscribers: prevent duplicate email registrations
+  await db.collection("newsletterSubscribers").createIndex({ email: 1 }, { unique: true });
+
   // Review indexes: one review per completed booking
   await db.collection("reviews").createIndex({ bookingId: 1 }, { unique: true });
   await db.collection("reviews").createIndex({ studioId: 1, createdAt: -1 });
@@ -144,6 +147,48 @@ app.get("/api/health", async (req: Request, res: Response) => {
       message: "StudioSpace API is unavailable.",
       database: "disconnected",
       timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ==========================================
+// Newsletter Subscription
+// ==========================================
+
+app.post("/api/newsletter", async (req: Request, res: Response) => {
+  try {
+    const email =
+      typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+
+    const emailPattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+    if (!email || email.length > 254 || !emailPattern.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address.",
+      });
+    }
+
+    await db.collection("newsletterSubscribers").insertOne({
+      email,
+      subscribedAt: new Date(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "You have successfully subscribed.",
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already subscribed.",
+      });
+    }
+
+    console.error("Newsletter Subscription Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Could not complete your subscription.",
     });
   }
 });
