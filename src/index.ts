@@ -13,6 +13,9 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 dotenv.config();
 
 const app = express();
+// Render runs Express behind a reverse proxy and forwards the client IP.
+// Trust the single proxy hop so express-rate-limit can identify clients correctly.
+app.set("trust proxy", 1);
 app.use(helmet());
 
 const PORT = process.env.PORT || 5000;
