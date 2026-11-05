@@ -160,7 +160,7 @@ app.post("/api/newsletter", async (req: Request, res: Response) => {
     const email =
       typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
 
-    const emailPattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || email.length > 254 || !emailPattern.test(email)) {
       return res.status(400).json({
         success: false,
